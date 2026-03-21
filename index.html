@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Ovid Agreement Trainer — single / multi spot</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <style>
+    body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; max-width: 900px; margin: 2rem auto; padding: 0 1rem; color:#111; }
+    h1 { font-size:1.4rem; margin-bottom:0.5rem; }
+    .latin-line { font-size: 1.35rem; margin: 0.6rem 0; line-height:1.4; background:#f8f8f8; padding:0.6rem; border-radius:6px; }
+    .controls { margin-top:0.6rem; display:flex; gap:0.5rem; flex-wrap:wrap; align-items:center; }
+    label.inline { display:inline-flex; gap:0.4rem; align-items:center; }
+    .hint { color:#444; font-size:0.95rem; display:none; margin-top:0.4rem; background:#fffbe6; padding:0.5rem; border-radius:6px; border:1px solid #f0e6b6; }
+    input[type="text"], textarea { font-size:1rem; padding:0.4rem; border:1px solid #ccc; border-radius:6px; width:100%; box-sizing:border-box; }
+    textarea { min-height:72px; resize:vertical; }
+    .feedback { margin-top:0.6rem; font-weight:600; }
+    .feedback .detail { font-weight:400; margin-top:0.4rem; }
+    .result-list { margin:0.4rem 0 0 0; padding:0; list-style:none; }
+    .result-list li { margin:0.15rem 0; padding:0.25rem 0.4rem; border-radius:4px; display:flex; justify-content:space-between; gap:0.6rem; }
+    .ok { background:#e6ffef; border:1px solid #bfe9c9; color:#0a6b2f; }
+    .miss { background:#fff4f4; border:1px solid #f1c2c2; color:#8a1b1b; }
+    .other { background:#f3f7ff; border:1px solid #c9d7ff; color:#1b3f8a; }
+    .small { font-size:0.9rem; color:#555; }
+    .mode-toggle { display:flex; gap:0.4rem; align-items:center; }
+    .meta { margin-top:0.6rem; display:flex; gap:1rem; align-items:center; flex-wrap:wrap; }
+    button { background:#0b63d6; color:white; border:none; padding:0.45rem 0.7rem; border-radius:6px; cursor:pointer; }
+    button.secondary { background:#6b7280; }
+    button:disabled { opacity:0.5; cursor:not-allowed; }
+    .answers-canonical { margin-top:0.5rem; font-size:0.95rem; color:#333; }
+    .score { font-weight:700; }
+    footer { margin-top:1.2rem; font-size:0.9rem; color:#666; }
+    @media (min-width:720px){
+      .controls { gap:0.75rem; }
+    }
+  </style>
+</head>
+<body>
+  <h1>Ovid Agreement Trainer</h1>
+
+  <div id="line-container">
+    <div id="latin" class="latin-line" aria-live="polite"></div>
+    <div id="hint" class="hint" aria-hidden="true"></div>
+  </div>
+
+  <div class="meta">
+    <div class="mode-toggle" role="group" aria-label="Mode">
+      <label class="inline"><input type="radio" name="mode" value="single" checked> Single-spot</label>
+      <label class="inline"><input type="radio" name="mode" value="multi"> Multi-spot</label>
+    </div>
+
+    <label class="inline small"><input type="checkbox" id="strict-order"> Require adjective then noun</label>
+
+    <div class="small">When in multi mode, separate answers with <strong>,</strong> or <strong>;</strong>.</div>
+  </div>
+
+  <label for="answer" style="display:block; margin-top:0.8rem;">
+    <span class="small">Type your answer(s) below</span>
+    <div class="small" style="margin-top:0.15rem; color:#444;">
+      <strong>Tip:</strong> type the adjective then the noun (e.g. <code>mutatas corpora</code>) if strict order is on.
+    </div>
+  </label>
+
+  <textarea id="answer" placeholder="Single mode: one agreement (e.g. mutatas corpora). Multi mode: list agreements separated by commas or semicolons."></textarea>
+
+  <div class="controls" style="margin-top:0.5rem;">
+    <button id="check-btn">Check</button>
+    <button id="show-hint-btn" class="secondary">Show hint</button>
+    <button id="next-btn" class="secondary">Next line</button>
+    <button id="reveal-btn" class="secondary" title="Reveal canonical agreements">Reveal answers</button>
+  </div>
+
+  <div id="feedback" class="feedback" role="status" aria-live="polite"></div>
+
+  <div id="explain" class="detail" style="margin-top:0.4rem;"></div>
+
+  <footer>
+    <div class="small">Designed for practice: you can switch modes, require strict adjective→noun order, and reveal canonical answers after trying.</div>
+  </footer>
+
+  <script>
+    /************************************************************************
+     * Data: items with Latin line, hint, and canonical agreements
+     * Each agreement is stored as a canonical "adjective noun" string.
+     ************************************************************************/
+    const items = [
+      {
+        latin: "in nova fert animus mutatas dicere formas corpora.",
+        hint: "2x Adjective–noun agreement with the adjective separated from its noun.",
+        agreements: [
+          "mutatas formas",
+          "nova corpora"
+        ]
+      },
+      {
+        latin: "nullus adhuc mundo praebebat lumina Titan.",
+        hint: "Adjective agreeing with a noun; unusual word order.",
+        agreements: [
+          "nullus Titan"
+        ]
+      },
+      {
+        latin: "sic erat instabilis tellus, unda innabilis.",
+        hint: "Two adjective–noun agreements with adjectives placed before and after their nouns.",
+        agreements: [
+          "instabilis tellus",
+          "innabilis unda",
+	  "tellus erat",
+	  "innabilis erat"
+        ]
+      },
+      {
+        latin: "gelidum subitus amor pectus subito incendit.",
+        hint: "Adjective–noun agreement enclosing word order.",
+        agreements: [
+          "subitus amor",
+          "gelidum pectus"
+        ]
+      },
+      {
+        latin: "aequor tremit immane; in litora altus surgit fluctus.",
+        hint: "Neuter adjective with noun and masculine adjective with noun.",
+        agreements: [
+          "immane aequor",
+          "altus fluctus"
+        ]
+      },
+      {
+        latin: "non bene iunctarum discordia semina rerum.",
+        hint: "2 pairs, hyperbaton.",
+        agreements: [
+          "iunctarum rerum",
+          "discordia semina"
+        ]
+      },
+      {
+        latin: "unus erat toto naturae vultus in orbe.",
+        hint: "Challenging word order: adjective and ablative phrase separated from the noun.",
+        agreements: [
+          "unus vultus",
+          "toto orbe"
+        ]
+      }
+    ];
+
+    /************************************************************************
+     * Utilities: normalisation and canonicalisation
+     ************************************************************************/
+    function normalise(s) {
+      if (!s) return "";
+      return s.toLowerCase()
+        .replace(/[–—]/g, "-")
+        .replace(/[.,;:!?]+/g, "")   // strip punctuation
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    // Accept "adj noun", "adj - noun", "noun adj" etc. Canonical form: "adj noun"
+    function canonicalPair(s) {
+      s = normalise(s);
+      if (!s) return "";
+      // replace any dash variants with single dash surrounded by spaces
+      s = s.replace(/\s*-\s*/g, " - ");
+      // if input contains a dash, split on it
+      if (s.includes(" - ")) {
+        const parts = s.split(" - ").map(p => p.trim()).filter(Boolean);
+        if (parts.length === 2) {
+          // prefer the left part as adjective, right as noun
+          return `${parts[0]} ${parts[1]}`;
+        }
+      }
+      // otherwise split on space(s)
+      const tokens = s.split(" ").filter(Boolean);
+      if (tokens.length === 1) {
+        // single token — treat as-is (may be a verb or single word)
+        return tokens[0];
+      }
+      // If there are exactly two tokens, assume adj noun (but we will allow order-insensitive matching)
+      if (tokens.length === 2) {
+        return `${tokens[0]} ${tokens[1]}`;
+      }
+      // If more than two tokens, try to find a two-word pair by taking first two or last two
+      // Prefer first two (adjective before noun) but keep last two as alternative when matching order-insensitive
+      return `${tokens[0]} ${tokens.slice(1).join(" ")}`.trim();
+    }
+
+    // Produce a set of canonical strings for an item (ensures uniqueness)
+    function canonicalSetForItem(item) {
+      const set = new Set();
+      item.agreements.forEach(a => {
+        const c = canonicalPair(a);
+        if (c) set.add(c);
+      });
+      return set;
+    }
+
+    /************************************************************************
+     * UI wiring
+     ************************************************************************/
+    const latinEl = document.getElementById("latin");
+    const hintEl = document.getElementById("hint");
+    const answerEl = document.getElementById("answer");
+    const feedbackEl = document.getElementById("feedback");
+    const explainEl = document.getElementById("explain");
+    const checkBtn = document.getElementById("check-btn");
+    const nextBtn = document.getElementById("next-btn");
+    const showHintBtn = document.getElementById("show-hint-btn");
+    const revealBtn = document.getElementById("reveal-btn");
+    const modeRadios = document.querySelectorAll('input[name="mode"]');
+    const strictOrderCheckbox = document.getElementById("strict-order");
+
+    let currentIndex = 0;
+    let attempts = 0;
+    let lastResult = null;
+
+    function currentMode() {
+      return document.querySelector('input[name="mode"]:checked').value; // "single" or "multi"
+    }
+
+    function loadItem(index) {
+      const item = items[index];
+      latinEl.textContent = item.latin;
+      hintEl.textContent = item.hint || "";
+      hintEl.style.display = "none";
+      hintEl.setAttribute("aria-hidden", "true");
+      showHintBtn.disabled = false;
+      showHintBtn.textContent = "Show hint";
+      answerEl.value = "";
+      feedbackEl.textContent = "";
+      explainEl.textContent = "";
+      attempts = 0;
+      lastResult = null;
+      answerEl.focus();
+    }
+
+    function parseUserAnswers(raw) {
+      // In single mode we treat the whole input as one answer.
+      // In multi mode we split on commas/semicolons/newlines.
+      const mode = currentMode();
+      if (mode === "single") {
+        const s = normalise(raw);
+        return s ? [s] : [];
+      } else {
+        // split on comma, semicolon, or newline
+        const parts = raw.split(/[,;\n]+/).map(p => p.trim()).filter(Boolean);
+        return parts.map(p => normalise(p));
+      }
+    }
+
+    function checkAnswers() {
+      const raw = answerEl.value;
+      const parsed = parseUserAnswers(raw);
+      if (parsed.length === 0) {
+        feedbackEl.textContent = "Type at least one agreement first.";
+        feedbackEl.style.color = "crimson";
+        return;
+      }
+
+      const item = items[currentIndex];
+      const expectedSet = canonicalSetForItem(item); // set of canonical "adj noun" strings
+      const expectedArray = Array.from(expectedSet);
+
+      // Build canonical forms for user answers and also keep original raw for display
+      const userPairs = parsed.map(u => ({ raw: u, canon: canonicalPair(u) })).filter(x => x.canon);
+
+      // Matching logic:
+      // - If strictOrder is on, require exact canonical match (adj noun).
+      // - If strictOrder is off, allow order-insensitive matches: e.g. "corpora mutatas" should match "mutatas corpora".
+      const strict = strictOrderCheckbox.checked;
+
+      // Helper to produce order-insensitive canonical variants
+      function orderInsensitiveVariants(canon) {
+        const tokens = canon.split(" ").filter(Boolean);
+        if (tokens.length === 2) {
+          return new Set([canon, `${tokens[1]} ${tokens[0]}`]);
+        }
+        // for single-token or multi-token, just return itself
+        return new Set([canon]);
+      }
+
+      // Build expected canonical forms and also order-insensitive map
+      const expectedCanonSet = new Set(expectedArray.map(a => a));
+      const expectedOrderInsensitive = new Map(); // map canonical -> set of variants
+      expectedArray.forEach(a => {
+        expectedOrderInsensitive.set(a, orderInsensitiveVariants(a));
+      });
+
+      // Track matches
+      const matchedExpected = new Set();
+      const userResults = userPairs.map(u => {
+        const ucanon = u.canon;
+        let matched = null;
+        // try exact match first
+        if (expectedCanonSet.has(ucanon)) {
+          matched = ucanon;
+        } else if (!strict) {
+          // try order-insensitive: check if ucanon matches any variant of expected
+          for (const [exp, variants] of expectedOrderInsensitive.entries()) {
+            if (variants.has(ucanon)) {
+              matched = exp; // record which expected it corresponds to
+              break;
+            }
+          }
+        }
+        if (matched) matchedExpected.add(matched);
+        return { raw: u.raw, canon: ucanon, matched: !!matched, matchedAs: matched };
+      });
+
+      // Compute missing expected agreements
+      const missing = expectedArray.filter(e => !matchedExpected.has(e));
+
+      // Compute incorrect guesses (user entries that didn't match any expected)
+      const incorrect = userResults.filter(u => !u.matched);
+
+      // Score: fraction of expected found (capped at 100)
+      const foundCount = matchedExpected.size;
+      const totalExpected = expectedArray.length;
+      const score = Math.round((foundCount / totalExpected) * 100);
+
+      // Build feedback UI
+      let fb = "";
+      if (score === 100) {
+        fb = "Full credit — you found all agreements.";
+        feedbackEl.style.color = "green";
+      } else if (score > 0) {
+        fb = `Partial credit — ${foundCount} of ${totalExpected} found (${score}%).`;
+        feedbackEl.style.color = "#b36b00";
+      } else {
+        fb = "No matches found. Try again or reveal the answers.";
+        feedbackEl.style.color = "crimson";
+      }
+      feedbackEl.textContent = fb;
+
+      // Detailed explanation
+      const container = document.createElement("div");
+
+      // Show which user answers were correct / incorrect
+      if (userResults.length) {
+        const ul = document.createElement("ul");
+        ul.className = "result-list";
+        userResults.forEach(r => {
+          const li = document.createElement("li");
+          li.className = r.matched ? "ok" : "miss";
+          const left = document.createElement("span");
+          left.textContent = r.raw;
+          const right = document.createElement("span");
+          right.className = "small";
+          right.textContent = r.matched ? `✓ matches ${r.matchedAs}` : "✕ not found";
+          li.appendChild(left);
+          li.appendChild(right);
+          ul.appendChild(li);
+        });
+        const heading = document.createElement("div");
+        heading.className = "small";
+        heading.textContent = "Your answers:";
+        container.appendChild(heading);
+        container.appendChild(ul);
+      }
+
+      // Show missing expected agreements
+      if (missing.length) {
+        const ul2 = document.createElement("ul");
+        ul2.className = "result-list";
+        missing.forEach(m => {
+          const li = document.createElement("li");
+          li.className = "other";
+          const left = document.createElement("span");
+          left.textContent = m;
+          const right = document.createElement("span");
+          right.className = "small";
+          right.textContent = "missing";
+          li.appendChild(left);
+          li.appendChild(right);
+          ul2.appendChild(li);
+        });
+        const heading2 = document.createElement("div");
+        heading2.className = "small";
+        heading2.textContent = "Missing agreements:";
+        container.appendChild(heading2);
+        container.appendChild(ul2);
+      }
+
+      // Save last result for possible reveal behaviour
+      lastResult = {
+        score, foundCount, totalExpected, userResults, missing, expectedArray
+      };
+
+      // Render explanation
+      explainEl.innerHTML = "";
+      explainEl.appendChild(container);
+
+      attempts += 1;
+    }
+
+    // Reveal canonical answers (always shows the full set)
+    function revealAnswers() {
+      const item = items[currentIndex];
+      const expected = Array.from(canonicalSetForItem(item));
+      const wrapper = document.createElement("div");
+      wrapper.className = "answers-canonical";
+      wrapper.innerHTML = `<strong>Canonical agreements:</strong> ${expected.map(e => `<code>${e}</code>`).join(", ")}`;
+      // append to explain area (below any existing feedback)
+      explainEl.appendChild(wrapper);
+    }
+
+    // Event listeners
+    checkBtn.addEventListener("click", () => {
+      checkAnswers();
+    });
+
+    nextBtn.addEventListener("click", () => {
+      currentIndex = (currentIndex + 1) % items.length;
+      loadItem(currentIndex);
+    });
+
+    showHintBtn.addEventListener("click", () => {
+      hintEl.style.display = "block";
+      hintEl.setAttribute("aria-hidden", "false");
+      showHintBtn.disabled = true;
+      showHintBtn.textContent = "Hint shown";
+    });
+
+    revealBtn.addEventListener("click", () => {
+      revealAnswers();
+    });
+
+    // Allow Enter to check (Ctrl+Enter for multi-line submit)
+    answerEl.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+        // in multi-line textarea, Ctrl+Enter triggers check
+        e.preventDefault();
+        checkBtn.click();
+      } else if (e.key === "Enter" && currentMode() === "single") {
+        // in single mode, Enter checks immediately
+        e.preventDefault();
+        checkBtn.click();
+      }
+    });
+
+    // Mode change resets the input and feedback
+    modeRadios.forEach(r => r.addEventListener("change", () => {
+      answerEl.value = "";
+      feedbackEl.textContent = "";
+      explainEl.textContent = "";
+      answerEl.focus();
+    }));
+
+    // Initial load
+    loadItem(currentIndex);
+
+    // Accessibility: focus management for keyboard users
+    checkBtn.addEventListener("keydown", (e) => {
+      if (e.key === " " || e.key === "Enter") { e.preventDefault(); checkBtn.click(); }
+    });
+  </script>
+</body>
+</html>
